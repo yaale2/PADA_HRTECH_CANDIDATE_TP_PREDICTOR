@@ -1,0 +1,239 @@
+# -*- coding: utf-8 -*-
+"""
+ПРОМЫШЛЕННЫЙ ПРОТОТИП ПРЕДИКТИВНОГО СКРИНИНГА РЕЗЮМЕ v3.1
+"""
+
+# 1. УСТАНОВКА ЗАВИСИМОСТЕЙ
+!pip install pycox sentence-transformers torchtuples pandas numpy scikit-learn -q
+!pip install seaborn matplotlib lifelines -q
+
+# 2. ИМПОРТ БИБЛИОТЕК
+import pandas as pd
+import numpy as np
+import json
+import re
+import torch
+import warnings
+from datetime import datetime
+warnings.filterwarnings('ignore')
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sentence_transformers import SentenceTransformer
+from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import train_test_split
+from pycox.models import CoxPH
+from pycox.evaluation import EvalSurv
+import torchtuples as tt
+from lifelines import KaplanMeierFitter
+
+np.random.seed(42)
+torch.manual_seed(42)
+
+print("="*80)
+print("ПРОТОТИП ПРЕДИКТИВНОГО СКРИНИНГА РЕЗЮМЕ v3.1")
+print("="*80)
+
+# ============================================================================
+# ФУНКЦИИ ПАРСИНГА
+# ============================================================================
+
+def parse_age(age_str):
+    if not age_str or pd.isna(age_str):
+        return 30
+    match = re.search(r'(\d+)\s*лет', str(age_str))
+    return int(match.group(1)) if match else 30
+
+def parse_salary(salary_str):
+    if not salary_str or pd.isna(salary_str) or salary_str == '':
+        return None
+    salary_str = str(salary_str).replace('\xa0', ' ').replace(' ', '')
+    if 'usd' in salary_str.lower() or '$' in salary_str or 'eur' in salary_str.lower():
+        return None
+    single_match = re.search(r'(\d+)', salary_str)
+    return int(single_match.group(1)) if single_match else None
+
+def parse_period_to_months(period_str):
+    if not period_str or pd.isna(period_str):
+        return None
+    period_str = str(period_str).lower()
+    years = re.findall(r'(\d+)\s*год', period_str)
+    months = re.findall(r'(\d+)\s*месяц', period_str)
+    if years or months:
+        total = (int(years[0]) * 12 if years else 0) + (int(months[0]) if months else 0)
+        return max(1, total) if total > 0 else None
+    return 12  # default
+
+def load_and_flatten_json(filepath):
+    with open(filepath, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+
+    rows = []
+    for item in data:
+        if not item.get('jobs'):
+            continue
+        last_job = item['jobs'][0]
+        duration = parse_period_to_months(last_job.get('period', ''))
+        if duration is None or duration <= 0:
+            continue
+
+        period_str = last_job.get('period', '').lower()
+        is_current = any(word in period_str for word in ['продолжаю', 'настоящее', 'н.в.', 'н/в'])
+        event = 1 if not is_current else 0
+
+        row = {
+            'duration_months': min(duration, 48),  # Жёсткое ограничение 48 месяцев
+            'event': event,
+            'age': parse_age(item.get('age', '')),
+            'salary': parse_salary(item.get('salary', '')),
+            'relocation': 1 if item.get('relocation_possible') else 0,
+            'jobs_count': len(item.get('jobs', [])),
+            'education_count': len(item.get('education', [])),
+            'title': item.get('title', ''),
+            'last_job_description': last_job.get('description', '')[:500]
+        }
+        rows.append(row)
+
+    df = pd.DataFrame(rows)
+    print(f"✅ Загружено: {len(data)} резюме, обработано: {len(df)}")
+
+    if len(df) > 0:
+        df['salary'] = df['salary'].fillna(df['salary'].median())
+        df['age'] = df['age'].fillna(df['age'].median())
+        # Job Hopping Index
+        df['job_hopping'] = df['duration_months'] / (df['jobs_count'] + 1)
+        # Skill Density
+        df['skill_count'] = df['last_job_description'].str.count(r'python|java|sql|docker|kubernetes|react|django|spring|postgresql|mongodb|git|aws|linux').fillna(0)
+        df['skill_count'] = df['skill_count'].clip(0, 10) / 10
+
+    return df
+
+# ============================================================================
+# ЗАГРУЗКА ДАННЫХ
+# ============================================================================
+
+print("\n📁 Загрузка и обработка JSON...")
+
+try:
+    df = load_and_flatten_json('careerist_resumes.json')
+except FileNotFoundError:
+    print("⚠️ Файл не найден")
+    exit()
+
+print(f"\n📊 Размер данных: {df.shape}")
+
+# ============================================================================
+# ПОДГОТОВКА ПРИЗНАКОВ
+# ============================================================================
+
+print("\n" + "="*80)
+print("ПОДГОТОВКА ПРИЗНАКОВ")
+print("="*80)
+
+# Числовые признаки
+numeric_features = ['age', 'salary', 'relocation', 'jobs_count', 'education_count', 'job_hopping', 'skill_count']
+numeric_features = [f for f in numeric_features if f in df.columns]
+
+X_num = df[numeric_features].values.astype('float32')
+print(f"✅ Числовые признаки: {len(numeric_features)} шт.")
+
+# Векторизация
+print("\n🔧 Генерация эмбеддингов...")
+model_sbert = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
+title_texts = df['title'].fillna('').astype(str).values
+title_embeddings = model_sbert.encode(title_texts, show_progress_bar=True)
+print(f"✅ Размер эмбеддингов: {title_embeddings.shape[1]}")
+
+X = np.concatenate([X_num, title_embeddings], axis=1)
+X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
+
+# Масштабирование
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(X)
+
+# Целевые переменные
+duration = df['duration_months'].values.astype('float32')
+event = df['event'].values.astype('float32')
+
+print(f"✅ Итоговая матрица: {X.shape}")
+print(f"✅ Доля событий: {event.mean()*100:.1f}%")
+
+# ============================================================================
+# ПРОСТАЯ МОДЕЛЬ (БЕЗ СЛОЖНЫХ АРХИТЕКТУР)
+# ============================================================================
+
+print("\n" + "="*80)
+print("ОБУЧЕНИЕ МОДЕЛИ")
+print("="*80)
+
+X_train, X_test, d_train, d_test, e_train, e_test = train_test_split(
+    X_scaled, duration, event, test_size=0.2, random_state=42
+)
+
+print(f"📊 Train: {len(X_train)}, Test: {len(X_test)}")
+
+# Простая архитектура (один слой)
+in_features = X_train.shape[1]
+net = tt.practical.MLPVanilla(
+    in_features,
+    [32],  # Всего один слой!
+    1,
+    batch_norm=False,
+    dropout=0.0,
+    output_bias=False
+)
+
+model = CoxPH(net, torch.optim.Adam)
+
+print("🔧 Начало обучения...")
+model.fit(
+    X_train, (d_train, e_train),
+    batch_size=256,
+    epochs=30,
+    verbose=True
+)
+
+_ = model.compute_baseline_hazards(X_train, (d_train, e_train))
+
+# ============================================================================
+# ОЦЕНКА
+# ============================================================================
+
+print("\n" + "="*80)
+print("ОЦЕНКА КАЧЕСТВА МОДЕЛИ")
+print("="*80)
+
+try:
+    # Предсказания
+    surv_df = model.predict_surv_df(X_test)
+    print(f"📊 Форма surv_df: {surv_df.shape}")
+
+    # C-index
+    ev = EvalSurv(surv_df, d_test, e_test, censor_surv='km')
+    c_index = ev.concordance_td()
+    print(f"\n🎯 Concordance Index: {c_index:.4f}")
+
+    if c_index >= 0.55:
+        print("   ✅ ХОРОШЕЕ качество!")
+    elif c_index >= 0.52:
+        print("   📈 Приемлемое качество")
+    else:
+        print("   ⚠️ Качество ниже ожидаемого")
+
+    # Кривая Каплана-Мейера для проверки
+    plt.figure(figsize=(10, 6))
+    kmf = KaplanMeierFitter()
+    kmf.fit(duration, event_observed=event)
+    kmf.plot(label='Все данные')
+    plt.title('Базовая кривая выживаемости')
+    plt.xlabel('Время (месяцы)')
+    plt.ylabel('Вероятность сохранения работы')
+    plt.grid(True, alpha=0.3)
+    plt.show()
+
+except Exception as e:
+    print(f"⚠️ Ошибка: {e}")
+
+print("\n" + "="*80)
+print("✅ ЗАВЕРШЕНО")
+print("="*80)
