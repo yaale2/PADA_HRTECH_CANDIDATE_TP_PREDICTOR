@@ -1,0 +1,18 @@
+# Model configuration
+MAX_JOBS = 10
+EMB_DIM = 384
+LSTM_HIDDEN_SIZE = 128
+NUM_BRANCH_OUT = 32
+HEAD_HIDDEN_SIZE = 64
+DROPOUT_RATE = 0.3
+
+# Training configuration
+BATCH_SIZE = 64
+LEARNING_RATE = 1e-3
+EPOCHS = 25
+RANDOM_SEED = 42
+TEST_SIZE = 0.2
+
+# Data configuration
+MIN_JOBS = 2
+CURRENT_YEAR = 2025
