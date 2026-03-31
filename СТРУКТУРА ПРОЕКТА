@@ -1,0 +1,8 @@
+Структура проекта
+
+Файл	Назначение
+src/data_loader.py	Загрузка и первичная обработка JSON
+src/feature_engineering.py	Парсинг временных интервалов, векторизация текстов
+src/model.py	Архитектура LSTM + Attention + DeepSurv
+src/train.py	Цикл обучения, функция потерь Cox, метрики
+notebooks/01_hybrid_model_training.ipynb	Экспериментальный блокнот
