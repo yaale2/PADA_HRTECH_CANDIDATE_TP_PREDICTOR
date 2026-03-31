@@ -1,0 +1,7 @@
+from src.train import train_model
+
+model, metrics = train_model(
+    json_path='data/careerist_resumes.json',
+    epochs=25,
+    batch_size=64
+)
