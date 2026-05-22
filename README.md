@@ -24,7 +24,7 @@
 
 ---
 
-## Архитектура
+## Архитектура модели
 
 ```
 CareerLSTMAttentionDeepSurv
@@ -50,6 +50,7 @@ Trainable parameters: 1,037,230
 
 | Параметр | Значение |
 |---|---|
+| Источник | careerist.ru (публичные резюме) |
 | Исходный массив | 19 982 резюме |
 | После фильтрации | 13 329 резюме |
 | Train / Val | 10 663 / 2 666 (80/20, стратификация по event) |
@@ -58,7 +59,57 @@ Trainable parameters: 1,037,230
 | seq_input_dim | 389 |
 | numeric_dim | 22 |
 
-Данные не публикуются (NDA). Схема маркировки: **self-supervised survival anchor** (последний хронологический эпизод → duration + event).
+Данные опубликованы в папке `data/`. Анонимизированы: без имён, контактов, дат рождения — только карьерные и профессиональные характеристики.
+
+---
+
+## Сбор данных и EDA
+
+Ноутбук парсера и разведочного анализа данных: `parser/Parser+EDA_ipynb__.ipynb`
+
+### Что делает парсер
+
+- Собирает публичные HTML-страницы резюме с careerist.ru
+- **Деидентифицирует данные на лету**: удаляет имена, email, телефоны, даты рождения, URL профилей
+- Хэширует source URL в анонимный `resume_hash` (SHA-256)
+- Сохраняет результат в JSONL и CSV без прямых персональных данных
+- Соблюдает задержки между запросами (respectful crawling)
+
+### Что извлекается из резюме
+
+| Поле | Описание |
+|---|---|
+| `resume_hash` | Анонимный идентификатор (SHA-256 от URL) |
+| `age_bucket` | Возрастная группа (18–24, 25–34, ...) вместо точного возраста |
+| `city` | Город |
+| `salary` | Желаемая зарплата (сумма + валюта) |
+| `employment_type` | Тип занятости |
+| `work_experience` | Список карьерных эпизодов (должность, отрасль, период, длительность) |
+| `education` | Образование |
+| `languages` | Иностранные языки |
+| `skills` | Навыки |
+| `about` | Раздел «О себе» (очищенный) |
+
+### EDA включает
+
+- Качество данных: покрытие полей, пропуски
+- Распределение зарплат, опыта, возрастных групп
+- Топ городов и отраслей
+- Анализ карьерной стабильности (доля коротких эпизодов)
+- Proxy-risk score по карьерной траектории
+- Bootstrap-стабильность, decile-анализ, компоненты риска
+
+### Быстрый старт парсера (Google Colab)
+
+```python
+# 1. Запустите ячейку setup
+# 2. Опционально: USE_GOOGLE_DRIVE = True для сохранения в Drive
+# 3. MAX_RESUMES = 20000 для статистически значимого EDA
+# 4. Если сессия Colab оборвалась:
+RUN_PARSING = False  # продолжить с сохранённого data/resumes.jsonl
+```
+
+> **Важно:** Proxy-risk score является интерпретируемым показателем по карьерной траектории, а не доказанным предсказанием будущего увольнения.
 
 ---
 
@@ -66,15 +117,24 @@ Trainable parameters: 1,037,230
 
 ```
 ├── notebooks/
-│   └── vkr_supervised_lstm_attention_deepsurv_FIXED.ipynb   # основной ноутбук
+│   └── vkr_supervised_lstm_attention_deepsurv_FIXED.ipynb  # основной ноутбук
+├── parser/
+│   └── Parser+EDA_ipynb__.ipynb                            # парсер и EDA
 ├── src/
-│   ├── features_real.py        # извлечение признаков и маркировка
+│   ├── features_real.py        # извлечение признаков и маркировка (leakage fix)
 │   ├── torch_model_v2.py       # архитектура BiLSTM+Attention+DeepSurv
 │   └── metrics.py              # C-index, Breslow, survival_at_horizons
+├── data/
+│   ├── careerist_resumes.jsonl # анонимизированный датасет (19 982 резюме)
+│   └── resumes_flat.csv        # плоская таблица для EDA
+├── models/retention/
+│   ├── model.pt                # веса обученной модели
+│   ├── metrics.json            # итоговые метрики
+│   ├── training_history.csv    # история обучения по эпохам
+│   ├── validation_predictions.csv
+│   └── permutation_importance.csv
+├── figures/                    # графики (10 штук)
 ├── config.py                   # гиперпараметры
-├── data/                       # пустая папка (данные не в репо)
-├── models/                     # сохранённые веса (не в репо)
-├── figures/                    # графики
 ├── requirements.txt
 ├── .gitignore
 └── README.md
@@ -91,24 +151,24 @@ pip install -r requirements.txt
 ```
 
 Откройте `notebooks/vkr_supervised_lstm_attention_deepsurv_FIXED.ipynb` в Google Colab.  
-Поместите `careerist_resumes.jsonl` в `data/` (или Google Drive по пути из `config.py`).
+Данные уже в `data/careerist_resumes.jsonl`.
 
 ---
 
 ## Гиперпараметры обучения
 
 ```python
-HIDDEN_SIZE     = 128
-NUM_LAYERS      = 2
-BIDIRECTIONAL   = True
-DROPOUT         = 0.3
-BATCH_SIZE      = 512
-EPOCHS          = 100          # ранняя остановка на эпохе 33
-LR              = 3e-4
-WARMUP_EPOCHS   = 5
-EARLY_STOP_PATIENCE = 15
-VAL_SHARE       = 0.2
-SEED            = 42
+HIDDEN_SIZE          = 128
+NUM_LAYERS           = 2
+BIDIRECTIONAL        = True
+DROPOUT              = 0.3
+BATCH_SIZE           = 512
+EPOCHS               = 100    # ранняя остановка на эпохе 33
+LR                   = 3e-4
+WARMUP_EPOCHS        = 5
+EARLY_STOP_PATIENCE  = 15
+VAL_SHARE            = 0.2
+SEED                 = 42
 ```
 
 ---
