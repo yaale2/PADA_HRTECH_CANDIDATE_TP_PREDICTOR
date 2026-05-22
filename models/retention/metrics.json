@@ -1,0 +1,92 @@
+{
+  "label_scheme": "last_job_survival_is_current",
+  "data_source": "/content/drive/MyDrive/careerist_retention/data/careerist_resumes.jsonl",
+  "records_total": 19982,
+  "records_filtered": {
+    "total": 19982,
+    "no_work_experience": 6653,
+    "last_job_invalid_duration": 0,
+    "last_job_missing_duration": 0,
+    "kept": 13329,
+    "kept_event_1": 8139,
+    "kept_event_0": 5190
+  },
+  "records_modeled": 13329,
+  "train_size": 10663,
+  "validation_size": 2666,
+  "event_rate_overall": 0.6106234526221022,
+  "median_duration_months": 32.0,
+  "nn_val_cindex": 0.7952758412677781,
+  "nn_val_cindex_ci": [
+    0.7838077646532031,
+    0.8058598450143121
+  ],
+  "models_ranking": [
+    {
+      "model": "LSTM + Attention + DeepSurv",
+      "train_C_index": 0.8144,
+      "val_C_index": 0.7953,
+      "CI_low": 0.7838,
+      "CI_high": 0.8059,
+      "n_params": 1037230
+    },
+    {
+      "model": "GBSA (Cox loss)",
+      "train_C_index": 0.6686,
+      "val_C_index": 0.6479,
+      "CI_low": 0.6331,
+      "CI_high": 0.6625,
+      "n_params": 300
+    },
+    {
+      "model": "Cox PH (L2)",
+      "train_C_index": 0.6374,
+      "val_C_index": 0.6329,
+      "CI_low": 0.6179,
+      "CI_high": 0.6474,
+      "n_params": 22
+    },
+    {
+      "model": "Cox PH + Elastic Net",
+      "train_C_index": 0.633,
+      "val_C_index": 0.629,
+      "CI_low": 0.6136,
+      "CI_high": 0.6438,
+      "n_params": 6
+    },
+    {
+      "model": "Weibull AFT",
+      "train_C_index": 0.631,
+      "val_C_index": 0.6286,
+      "CI_low": 0.6141,
+      "CI_high": 0.6433,
+      "n_params": 24
+    },
+    {
+      "model": "Random Survival Forest",
+      "train_C_index": 0.7163,
+      "val_C_index": 0.6192,
+      "CI_low": 0.6046,
+      "CI_high": 0.6347,
+      "n_params": 300
+    },
+    {
+      "model": "Extra Survival Trees",
+      "train_C_index": 0.656,
+      "val_C_index": 0.6185,
+      "CI_low": 0.6042,
+      "CI_high": 0.6331,
+      "n_params": 300
+    }
+  ],
+  "paired_vs_best_baseline": {
+    "best_baseline": "GBSA (Cox loss)",
+    "mean_delta": 0.1471811397486853,
+    "p_value": 0.0,
+    "ci": [
+      0.1342513168481025,
+      0.16066655164735638
+    ]
+  },
+  "logrank_pvalue": 0.0
+}
