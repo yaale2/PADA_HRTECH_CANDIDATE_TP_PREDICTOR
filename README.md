@@ -59,13 +59,11 @@ Trainable parameters: 1,037,230
 | seq_input_dim | 389 |
 | numeric_dim | 22 |
 
-Данные опубликованы в папке `data/`. Анонимизированы: без имён, контактов, дат рождения — только карьерные и профессиональные характеристики.
+Данные анонимизированы: без имён, контактов, дат рождения — только карьерные и профессиональные характеристики.
 
 ---
 
 ## Сбор данных и EDA
-
-Ноутбук парсера и разведочного анализа данных: `parser/Parser+EDA_ipynb__.ipynb`
 
 ### Что делает парсер
 
@@ -99,16 +97,6 @@ Trainable parameters: 1,037,230
 - Proxy-risk score по карьерной траектории
 - Bootstrap-стабильность, decile-анализ, компоненты риска
 
-### Быстрый старт парсера (Google Colab)
-
-```python
-# 1. Запустите ячейку setup
-# 2. Опционально: USE_GOOGLE_DRIVE = True для сохранения в Drive
-# 3. MAX_RESUMES = 20000 для статистически значимого EDA
-# 4. Если сессия Colab оборвалась:
-RUN_PARSING = False  # продолжить с сохранённого data/resumes.jsonl
-```
-
 > **Важно:** Proxy-risk score является интерпретируемым показателем по карьерной траектории, а не доказанным предсказанием будущего увольнения.
 
 ---
@@ -118,15 +106,10 @@ RUN_PARSING = False  # продолжить с сохранённого data/res
 ```
 ├── notebooks/
 │   └── vkr_supervised_lstm_attention_deepsurv_FIXED.ipynb  # основной ноутбук
-├── parser/
-│   └── Parser+EDA_ipynb__.ipynb                            # парсер и EDA
 ├── src/
 │   ├── features_real.py        # извлечение признаков и маркировка (leakage fix)
 │   ├── torch_model_v2.py       # архитектура BiLSTM+Attention+DeepSurv
 │   └── metrics.py              # C-index, Breslow, survival_at_horizons
-├── data/
-│   ├── careerist_resumes.jsonl # анонимизированный датасет (19 982 резюме)
-│   └── resumes_flat.csv        # плоская таблица для EDA
 ├── models/retention/
 │   ├── model.pt                # веса обученной модели
 │   ├── metrics.json            # итоговые метрики
@@ -150,8 +133,7 @@ cd PADA_HRTECH_CANDIDATE_TP_PREDICTOR
 pip install -r requirements.txt
 ```
 
-Откройте `notebooks/vkr_supervised_lstm_attention_deepsurv_FIXED.ipynb` в Google Colab.  
-Данные уже в `data/careerist_resumes.jsonl`.
+Откройте `notebooks/vkr_supervised_lstm_attention_deepsurv_FIXED.ipynb` в Google Colab.
 
 ---
 
